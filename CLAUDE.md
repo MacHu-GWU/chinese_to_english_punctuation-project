@@ -4,7 +4,7 @@ This document guides AI assistants on how to navigate and work with this project
 
 ## Project Overview
 
-**What this project does:** Read `README.rst` for project description and purpose.
+**What this project does:** Converts Chinese full-width punctuation (`，。：；？！（）“”`) into English half-width punctuation and fixes the spacing between Chinese characters and adjacent English words or numbers, while preserving leading indentation so code blocks stay intact. The public Python API is a single function, `chinese_to_english_punctuation.api.process`, which takes text and returns text; the core logic lives in `chinese_to_english_punctuation/impl.py`. The same behavior is exposed on the command line as `c2ep`, with a `text` subcommand (stdin or `--text` to stdout) and a `file` subcommand (rewrites a UTF-8 file in place), defined in `chinese_to_english_punctuation/cli.py`.
 
 **Project type:** Python package
 
