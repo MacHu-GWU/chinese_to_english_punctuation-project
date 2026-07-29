@@ -56,7 +56,16 @@ Behavior:
 - Line endings are **normalized to LF** — a CRLF file is rewritten with LF.
 - If the conversion produces identical content, the file is **not** rewritten at all (mtime is untouched) and the command prints `no change`.
 
-Output on stdout is one line: `<path>: no change`, `<path>: N line(s) changed`, or `<path>: N line(s) would change (dry run, nothing written)`.
+Output on stdout is one line:
+
+| Situation | Message |
+|---|---|
+| Nothing to do | `<path>: no change` |
+| Text changed | `<path>: N line(s) changed` |
+| Only the line terminators changed | `<path>: line endings normalized` |
+| `--dry_run` | the same wording in the conditional — `N line(s) would change` / `line endings would be normalized` — followed by `(dry run, nothing written)` |
+
+The line count is computed on `splitlines()` output, so it never sees terminators. A CRLF file whose text is already correct therefore counts 0 changed lines while still being rewritten; that case reports `line endings normalized` rather than a misleading `0 line(s) changed`.
 
 Error cases, all exit `1` with a message on stderr: path not found, path is not a file, path is not valid UTF-8.
 

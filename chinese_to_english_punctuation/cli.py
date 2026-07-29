@@ -84,12 +84,21 @@ def _main_file(path: Path, dry_run: bool = False) -> int:
         return 0
 
     n = _count_changed_lines(old_text, new_text)
+    if n:
+        did, would = f"{n} line(s) changed", f"{n} line(s) would change"
+    else:
+        # The content of every line is identical, so the only thing left that
+        # can differ is the line terminators — typically a CRLF file being
+        # normalized to LF. Reporting "0 line(s) changed" for a file we are
+        # about to rewrite would read as if nothing happened.
+        did, would = "line endings normalized", "line endings would be normalized"
+
     if dry_run:
-        print(f"{path}: {n} line(s) would change (dry run, nothing written)")
+        print(f"{path}: {would} (dry run, nothing written)")
         return 0
 
     path.write_bytes(new_text.encode("utf-8"))
-    print(f"{path}: {n} line(s) changed")
+    print(f"{path}: {did}")
     return 0
 
 

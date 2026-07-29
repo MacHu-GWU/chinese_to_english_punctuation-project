@@ -37,6 +37,10 @@ x.y.z (Backlog)
   before the last one. Was ``((a) )``, now ``((a))``.
 - ``<`` is now treated as an opening mark by the Chinese/English spacing pass,
   so ``《中文》`` converts to ``<中文>`` rather than ``< 中文>``.
+- ``c2ep file`` no longer reports ``0 line(s) changed`` for a file it did in
+  fact rewrite. The line counter runs on ``splitlines()`` output and cannot see
+  line terminators, so a CRLF file whose text is already correct counted zero
+  changed lines. That case now reports ``line endings normalized``.
 
 
 0.1.1 (1970-01-01)

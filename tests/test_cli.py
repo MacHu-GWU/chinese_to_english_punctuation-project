@@ -23,35 +23,41 @@ class TestText:
         assert capsys.readouterr().out == "第一行,\n第二行.\n"
 
 
+# NOTE: every file assertion below goes through write_bytes / read_bytes on
+# purpose. Path.write_text() translates "\n" to os.linesep, so on Windows it
+# would silently produce a CRLF file, and read_text() would translate it back
+# on the way in — the test would then be asserting on something other than
+# what is actually on disk. This tool rewrites files byte for byte, so the
+# tests have to work at the same level.
 class TestFile:
     def test_rewrite_in_place(self, tmp_path, capsys):
         p = tmp_path / "a.md"
-        p.write_text("你好，世界。\n价格是100元\n", encoding="utf-8")
+        p.write_bytes("你好，世界。\n价格是100元\n".encode("utf-8"))
         assert main(["file", "--path", str(p)]) == 0
-        assert p.read_text(encoding="utf-8") == "你好, 世界.\n价格是 100 元\n"
+        assert p.read_bytes() == "你好, 世界.\n价格是 100 元\n".encode("utf-8")
         assert "2 line(s) changed" in capsys.readouterr().out
 
     def test_trailing_newline_preserved(self, tmp_path):
         p = tmp_path / "a.md"
-        p.write_text("你好，世界。\n", encoding="utf-8")
+        p.write_bytes("你好，世界。\n".encode("utf-8"))
         assert main(["file", "--path", str(p)]) == 0
-        assert p.read_text(encoding="utf-8").endswith("\n")
+        assert p.read_bytes().endswith(b"\n")
 
     def test_no_trailing_newline_not_added(self, tmp_path):
         p = tmp_path / "a.md"
-        p.write_text("你好，世界。", encoding="utf-8")
+        p.write_bytes("你好，世界。".encode("utf-8"))
         assert main(["file", "--path", str(p)]) == 0
-        assert p.read_text(encoding="utf-8") == "你好, 世界."
+        assert p.read_bytes() == "你好, 世界.".encode("utf-8")
 
     def test_bom_preserved(self, tmp_path):
         p = tmp_path / "a.md"
-        p.write_bytes("﻿你好，世界。\n".encode("utf-8"))
+        p.write_bytes(("\ufeff" + "你好，世界。\n").encode("utf-8"))
         assert main(["file", "--path", str(p)]) == 0
-        assert p.read_bytes() == "﻿你好, 世界.\n".encode("utf-8")
+        assert p.read_bytes() == ("\ufeff" + "你好, 世界.\n").encode("utf-8")
 
     def test_no_change_is_not_rewritten(self, tmp_path, capsys):
         p = tmp_path / "a.md"
-        p.write_text("hello, world.\n", encoding="utf-8")
+        p.write_bytes(b"hello, world.\n")
         mtime_before = p.stat().st_mtime_ns
         assert main(["file", "--path", str(p)]) == 0
         assert "no change" in capsys.readouterr().out
@@ -59,9 +65,9 @@ class TestFile:
 
     def test_dry_run_does_not_write(self, tmp_path, capsys):
         p = tmp_path / "a.md"
-        p.write_text("你好，世界。\n", encoding="utf-8")
+        p.write_bytes("你好，世界。\n".encode("utf-8"))
         assert main(["file", "--path", str(p), "--dry_run"]) == 0
-        assert p.read_text(encoding="utf-8") == "你好，世界。\n"
+        assert p.read_bytes() == "你好，世界。\n".encode("utf-8")
         assert "would change" in capsys.readouterr().out
 
     def test_not_found(self, tmp_path, capsys):
@@ -84,6 +90,30 @@ class TestFile:
         p.write_bytes("你好，世界。\r\n第二行。\r\n".encode("utf-8"))
         assert main(["file", "--path", str(p)]) == 0
         assert p.read_bytes() == "你好, 世界.\n第二行.\n".encode("utf-8")
+
+    def test_crlf_only_change_is_reported_honestly(self, tmp_path, capsys):
+        """A CRLF file whose text needs no conversion still gets rewritten.
+
+        Every line is byte-identical once the terminator is stripped, so the
+        line counter sees 0 differences — but the file really does change.
+        Saying "0 line(s) changed" would be a lie.
+        """
+        p = tmp_path / "a.md"
+        p.write_bytes(b"hello, world.\r\nsecond line.\r\n")
+        assert main(["file", "--path", str(p)]) == 0
+        assert p.read_bytes() == b"hello, world.\nsecond line.\n"
+        out = capsys.readouterr().out
+        assert "line endings normalized" in out
+        assert "0 line(s)" not in out
+
+    def test_crlf_only_change_dry_run(self, tmp_path, capsys):
+        p = tmp_path / "a.md"
+        p.write_bytes(b"hello, world.\r\n")
+        assert main(["file", "--path", str(p), "--dry_run"]) == 0
+        assert p.read_bytes() == b"hello, world.\r\n"
+        out = capsys.readouterr().out
+        assert "line endings would be normalized" in out
+        assert "0 line(s)" not in out
 
 
 class TestUsageErrors:
