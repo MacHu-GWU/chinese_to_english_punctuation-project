@@ -16,9 +16,27 @@ Semantics worth knowing before you use it:
 - **Idempotent.** Running it on already-converted text is a no-op, which makes it safe in a `--check`-style loop.
 - **Not Markdown-aware.** It does not parse fences; content *inside* a code block is converted like any other line. Indentation survives, but a full-width comma in a Python string literal will still become an ASCII comma.
 
-What it converts: `，` `、` → `, ` · `。` → `. ` · `：` → `: ` · `；` → `; ` · `？` → `? ` · `！` → `! ` · `（）` → `()` · `“”` → `"`. Runs of two or three identical `。？！` are treated as a unit (`。。。` → `...`). Spaces are inserted between Chinese characters and adjacent Latin letters or digits, but not before closing punctuation or after opening brackets/quotes. Spaces just inside paired Markdown `**bold**` markers are cleaned up last.
+What it converts:
 
-The individual per-mark handlers live in `chinese_to_english_punctuation/impl.py` and are **not** public — read that file if you need to know exactly how a given mark is treated.
+| Chinese | English | Notes |
+|---|---|---|
+| `，` `、` | `, ` | space after |
+| `。` | `. ` | space after |
+| `：` `；` | `: ` `; ` | space after |
+| `？` `！` | `? ` `! ` | space after |
+| `（）` | `()` | space *before* the opener, *after* the closer |
+| `【】` `［］` | `[]` | same spacing rule |
+| `《》` `〈〉` `＜＞` | `<>` | same spacing rule |
+| `｛｝` | `{}` | full-width braces only |
+| `“”` | `"` | same spacing rule |
+
+Runs of two or three identical `。？！` are treated as a unit (`。。。` → `...`). Spaces are inserted between Chinese characters and adjacent Latin letters or digits, but not before closing punctuation or after opening brackets/quotes. Nested or adjacent paired marks do not get a space wedged between them (`【《书名》】` → `[<书名>]`). Spaces just inside paired Markdown `**bold**` markers are cleaned up last.
+
+**Not** converted: single quotes `‘’` pass through unchanged, because `’` doubles as an apostrophe and telling the two apart needs context.
+
+Note that `＜` `＞` are always treated as a bracket pair, never as full-width comparison operators — `a＜b` becomes `a <b`.
+
+The paired marks are driven by the `BRACKET_PAIRS` table in `chinese_to_english_punctuation/impl.py`. That module and everything in it is **not** public — read the file if you need to know exactly how a given mark is treated.
 
 ## Key scenarios
 

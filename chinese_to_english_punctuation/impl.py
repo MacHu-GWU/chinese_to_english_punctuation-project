@@ -7,9 +7,6 @@
 import re
 from dataclasses import dataclass
 
-chinese_punctuation = "，、。；：？！“”‘’（）【】《》"
-
-
 @dataclass
 class PairMatch:
     """
@@ -216,84 +213,121 @@ def handle_exclamation(line: str) -> str:
     return "! ".join(tokens).strip()
 
 
-def handle_zuo_kuo_hao(line: str) -> str:
+@dataclass(frozen=True)
+class BracketPair:
     """
-    中文左括号 （ → 英文左括号 (
-    并在左括号前添加一个空格
+    一对成对出现的中文标点, 以及它们对应的英文形式
+
+    :param open_cn: 中文左标记, 如 "（"
+    :param open_en: 对应的英文左标记, 如 "("
+    :param close_cn: 中文右标记, 如 "）"
+    :param close_en: 对应的英文右标记, 如 ")"
+    """
+
+    open_cn: str
+    open_en: str
+    close_cn: str
+    close_en: str
+
+
+#: 所有成对标点的映射表. 新增一种括号只要在这里加一行.
+#: 顺序会影响相邻标记的处理结果, 引号放在最后, 与括号类保持先后关系.
+BRACKET_PAIRS = [
+    BracketPair("（", "(", "）", ")"),
+    BracketPair("【", "[", "】", "]"),
+    BracketPair("［", "[", "］", "]"),
+    BracketPair("《", "<", "》", ">"),
+    BracketPair("〈", "<", "〉", ">"),
+    BracketPair("＜", "<", "＞", ">"),
+    BracketPair("｛", "{", "｝", "}"),
+    BracketPair("“", '"', "”", '"'),
+]
+
+#: 右标记后面紧跟这些字符时, 不再补空格.
+#: 除了英文标点, 还包括中文的右标记 —— 它们在后续的 pair 中才会被转换成英文,
+#: 但此刻已经能确定「右边是一个收口符号」, 不该在中间插空格.
+NO_SPACE_BEFORE = ",.:;?!)]}>" + "）】］》〉＞｝”"
+
+#: 左标记前面紧挨着这些字符时, 不再补空格. 理由同 :data:`NO_SPACE_BEFORE`.
+NO_SPACE_AFTER = "([{<" + "（【［《〈＜｛“"
+
+
+def handle_open_bracket(line: str, open_cn: str, open_en: str) -> str:
+    """
+    中文左标记 → 英文左标记, 并在左标记前添加一个空格
+
+    如果左标记本身就在行首, 或者紧挨着另一个左标记 (例如 "【（" ), 就不补空格.
+
+    :param line: 要处理的字符串
+    :param open_cn: 中文左标记, 如 "（"
+    :param open_en: 对应的英文左标记, 如 "("
+
+    :return: 处理后的字符串
 
     .. note::
 
         不能过滤掉 split 产生的空 token. 空 token 携带了「这里是行首」这样的
-        结构信息, 过滤掉会导致 join 少一个分隔符, 左括号直接消失.
+        结构信息, 过滤掉会导致 join 少一个分隔符, 左标记直接消失.
         例如 "（内容）" split 后是 ["", "内容）"], 过滤后只剩一个 token,
         join 不产生任何分隔符, 左括号就丢了.
-        行首多出来的空格由最后的 strip() 负责清理.
     """
-    tokens = [token.strip() for token in line.split("（")]
-    return " (".join(tokens).strip()
+    tokens = [token.strip() for token in line.split(open_cn)]
+    result = tokens[0]
+    for token in tokens[1:]:
+        if result and result[-1] not in NO_SPACE_AFTER:
+            result += " "
+        result += open_en + token
+    return result.strip()
 
 
-def handle_you_kuo_hao(line: str) -> str:
+def handle_close_bracket(line: str, close_cn: str, close_en: str) -> str:
     """
-    中文右括号 ） → 英文右括号 )
-    并在右括号后添加一个空格. 但如果右括号之后是一个特殊标点符号, 则不添加空格.
+    中文右标记 → 英文右标记, 并在右标记后添加一个空格
+
+    如果右标记后面紧跟着 :data:`NO_SPACE_BEFORE` 里的字符, 就不补空格.
+
+    :param line: 要处理的字符串
+    :param close_cn: 中文右标记, 如 "）"
+    :param close_en: 对应的英文右标记, 如 ")"
+
+    :return: 处理后的字符串
 
     .. note::
 
-        同 :func:`handle_zuo_kuo_hao`, 不过滤空 token.
-        行尾的 ） 会产生一个末尾空 token, 循环自然会为它补上 ")",
-        因此不再需要单独判断「行尾是不是 ）」.
+        同 :func:`handle_open_bracket`, 不过滤空 token.
+        行尾的右标记会产生一个末尾空 token, 循环自然会为它补上 ") ",
+        因此不需要单独判断「行尾是不是右标记」, 多出的尾部空格由 strip() 清理.
     """
-    tokens = [token.strip() for token in line.split("）")]
+    tokens = [token.strip() for token in line.split(close_cn)]
     new_tokens = list()
     for ith, token in enumerate(tokens):
         new_tokens.append(token)
         if ith + 1 >= len(tokens):
             break
         next_token = tokens[ith + 1]
-        # next_token 可能是空字符串 (连续的 ） 或行尾的 ）), 此时按「后面没有
-        # 紧跟标点」处理, 补 ") ", 多出的尾部空格由 strip() 清理
-        if next_token and next_token[0] in ",.:;?!":
-            new_tokens.append(")")
+        if next_token:
+            no_space = next_token[0] in NO_SPACE_BEFORE
         else:
-            new_tokens.append(") ")
+            # 空的 next_token 只有两种来源: 紧跟着又一个相同的右标记
+            # (例如 "））"), 或者这里已经是行尾. 两种情况都不补空格 ——
+            # 行尾多出来的空格反正也会被 strip() 清掉.
+            no_space = True
+        new_tokens.append(close_en if no_space else close_en + " ")
     return "".join(new_tokens).strip()
 
 
-def handle_zuo_shuang_yin_hao(line: str) -> str:
+def handle_all_brackets(line: str) -> str:
     """
-    中文左双引号 “ → 英文左双引号 "
-    并在左双引号前添加一个空格
+    按 :data:`BRACKET_PAIRS` 依次处理所有成对标点
 
-    .. note::
+    :param line: 要处理的字符串
 
-        同 :func:`handle_zuo_kuo_hao`, 不过滤空 token, 否则行首的 “ 会丢失.
+    :return: 处理后的字符串
     """
-    tokens = [token.strip() for token in line.split("“")]
-    return ' "'.join(tokens).strip()
-
-
-def handle_you_shuang_yin_hao(line: str) -> str:
-    """
-    中文右双引号 ” → 英文右双引号 "
-    并在右双引号后添加一个空格. 但如果右双引号之后是一个特殊标点符号, 则不添加空格.
-
-    .. note::
-
-        同 :func:`handle_you_kuo_hao`, 不过滤空 token.
-    """
-    tokens = [token.strip() for token in line.split("”")]
-    new_tokens = list()
-    for ith, token in enumerate(tokens):
-        new_tokens.append(token)
-        if ith + 1 >= len(tokens):
-            break
-        next_token = tokens[ith + 1]
-        if next_token and next_token[0] in ",.:;?!)":
-            new_tokens.append('"')
-        else:
-            new_tokens.append('" ')
-    return "".join(new_tokens).strip()
+    for pair in BRACKET_PAIRS:
+        line = handle_open_bracket(line, pair.open_cn, pair.open_en)
+        line = handle_close_bracket(line, pair.close_cn, pair.close_en)
+    return line
 
 
 def handle_consecutive_punctuation(line: str) -> str:
@@ -349,10 +383,10 @@ def handle_space_between_chinese_and_english(line: str) -> str:
     prev_char = None
 
     # Punctuation that should stay close to preceding text (no space before)
-    closing_punctuation = ",.!?;:)]}"
+    closing_punctuation = ",.!?;:)]}>"
     # Punctuation that should stay close to following text (no space after)
     # This includes opening brackets and left quotes
-    opening_punctuation = "([{\""
+    opening_punctuation = "([{<\""
 
     # Track whether we're inside quotes (simple toggle)
     inside_quotes = False
@@ -507,10 +541,8 @@ def handle_everything(line: str) -> str:
     line = handle_fen_hao(line)
     line = handle_wen_hao(line)
     line = handle_exclamation(line)
-    line = handle_zuo_kuo_hao(line)
-    line = handle_you_kuo_hao(line)
-    line = handle_zuo_shuang_yin_hao(line)
-    line = handle_you_shuang_yin_hao(line)
+    # Then the paired marks: brackets and quotes
+    line = handle_all_brackets(line)
     # Add spaces between Chinese and English after all punctuation conversions
     line = handle_space_between_chinese_and_english(line)
     # Post-process to remove spaces inside paired markers

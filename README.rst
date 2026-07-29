@@ -53,12 +53,13 @@ Welcome to ``chinese_to_english_punctuation`` Documentation
 ``chinese_to_english_punctuation`` rewrites Chinese full-width punctuation into
 its English half-width equivalent, and fixes the spacing around it. Documents
 written by Chinese speakers about technical topics almost always end up mixing
-the two: the narrative uses ，。：；？！（）“” while the technical terms stay in
-English. That mix reads poorly in Markdown and reStructuredText, and it breaks
-tooling that expects ASCII punctuation. This library converts ``，`` to ``,``,
-``。`` to ``.``, ``（）`` to ``()`` and so on, inserts the single space that
-belongs between a Chinese character and an adjacent Latin word or number, and
-leaves everything else alone.
+the two: the narrative uses ，。：；？！（）【】《》“” while the technical terms
+stay in English. That mix reads poorly in Markdown and reStructuredText, and it
+breaks tooling that expects ASCII punctuation. This library converts ``，`` to
+``,``, ``。`` to ``.``, ``（）`` to ``()``, ``【】`` and ``［］`` to ``[]``,
+``《》`` and ``〈〉`` to ``<>`` and so on, inserts the single space that belongs
+between a Chinese character and an adjacent Latin word or number, and leaves
+everything else alone.
 
 The conversion is line-oriented and deliberately conservative about structure.
 Leading indentation is preserved verbatim, so fenced code blocks, ``.. code-block``
