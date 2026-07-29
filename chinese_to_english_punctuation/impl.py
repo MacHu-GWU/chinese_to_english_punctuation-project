@@ -459,18 +459,7 @@ def handle_space_between_chinese_and_english(line: str) -> str:
                 and not prev_is_opening_punct
             ):
                 should_add_space = True
-            # 6. Between non-ASCII character and ASCII letter
-            # Example: '中文A' should add space
-            # BUT NOT before opening quotes
-            elif (
-                prev_is_non_ascii
-                and prev_char not in " "
-                and current_char.isalpha()
-                and ord(current_char) < 128
-                and not current_is_opening_quote
-            ):
-                should_add_space = True
-            # 7. Between non-ASCII character and opening quote, example: '从"' -> '从 "'
+            # 6. Between non-ASCII character and opening quote, example: '从"' -> '从 "'
             elif prev_is_non_ascii and current_is_opening_quote:
                 should_add_space = True
 
@@ -547,6 +536,11 @@ def handle_everything(line: str) -> str:
     line = handle_space_between_chinese_and_english(line)
     # Post-process to remove spaces inside paired markers
     line = post_process_paired_markers(line)
+    # 整行只有标点符号时, 上面的 handler 会把内容全部吃掉. 此时不能再把缩进
+    # 拼回去, 否则会留下一行纯空白 —— 而纯空白行在下一次处理时又会变成空行,
+    # 破坏 process() 的幂等性.
+    if not line:
+        return ""
     # 最后把行首缩进拼回去
     return indent + line
 
