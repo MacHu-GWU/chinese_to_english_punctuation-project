@@ -62,8 +62,15 @@ between a Chinese character and an adjacent Latin word or number, and leaves
 everything else alone.
 
 The conversion is line-oriented and deliberately conservative about structure.
-Leading indentation is preserved verbatim, so fenced code blocks, ``.. code-block``
-directives and nested list continuations survive untouched. Runs of two or three
+Leading indentation is preserved verbatim, so nested list continuations survive
+untouched. Code-like blocks are recognized and handled in a format-preserving
+mode that only swaps the marks and never touches whitespace: Markdown fenced
+code (including Mermaid diagrams), ``$$`` math, HTML blocks and YAML front
+matter, and reStructuredText ``.. code-block``-style directives (also inside
+``list-table`` cells) and ``::`` literal blocks. reStructuredText grid and
+simple tables rely on column alignment and are left exactly as they are. Inline
+code spans are treated the same way as code blocks, and Markdown link targets and bare URLs
+are left alone. Runs of two or three
 identical marks (``。。。``, ``？？？``, ``！！！``) are treated as a single unit
 rather than being split apart. Spaces that would otherwise be introduced just
 inside paired Markdown markers such as ``**bold**`` are cleaned up afterwards.

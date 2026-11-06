@@ -7,6 +7,8 @@
 import re
 from dataclasses import dataclass
 
+from .blocks import LineKind, classify_lines
+
 @dataclass
 class PairMatch:
     """
@@ -506,6 +508,106 @@ def split_indent(line: str) -> tuple[str, str]:
     return indent, content
 
 
+#: 代码类内容里, 中文标点到英文标点的逐字映射.
+CODE_PUNCTUATION_MAP = {
+    "，": ",",
+    "、": ",",
+    "。": ".",
+    "：": ":",
+    "；": ";",
+    "？": "?",
+    "！": "!",
+    **{p.open_cn: p.open_en for p in BRACKET_PAIRS},
+    **{p.close_cn: p.close_en for p in BRACKET_PAIRS},
+}
+
+#: 代码类内容里, 这些标点转换后如果紧跟着正文, 补一个空格.
+_CODE_SPACE_AFTER = "，、。：；？！"
+
+#: 代码类内容里, 标点后面是这些左标记时也补空格, 例如 "a，（b）" -> "a, (b)".
+_CODE_OPENERS = "([{" + "".join(p.open_cn for p in BRACKET_PAIRS if p.open_cn != "“")
+
+
+def handle_code_line(line: str) -> str:
+    """
+    保守模式: 处理代码类块 (代码, Mermaid, HTML 等) 里的一行.
+
+    只把中文标点逐字替换成英文标点. 当 ``，、。：；？！`` 后面紧跟着文字
+    (而不是空白, 另一个标点或行尾) 时, 在后面补一个空格.
+    除此之外不碰任何空白: 不 strip, 不压缩连续空格, 不在括号和中英文之间补空格.
+    这样代码的对齐, Mermaid 的节点语法 (``A[...]``, ``B{...}``, ``|...|``) 都不会被破坏.
+
+    :param line: 要处理的一行 (不含换行符)
+
+    :return: 处理后的一行
+
+    .. code-block:: python
+
+        >>> handle_code_line('    A[开始，读取配置] --> B{配置存在？}')
+        '    A[开始, 读取配置] --> B{配置存在?}'
+    """
+    result = []
+    for i, char in enumerate(line):
+        result.append(CODE_PUNCTUATION_MAP.get(char, char))
+        if char in _CODE_SPACE_AFTER and i + 1 < len(line):
+            nxt = line[i + 1]
+            if nxt.isalnum() or nxt in _CODE_OPENERS:
+                result.append(" ")
+    return "".join(result)
+
+
+# Markdown / reStructuredText 的 inline code, 例如 `code` 或 ``code``.
+# 反引号数量必须相同才能配对.
+_RE_INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)")
+
+# Markdown 链接 / 图片的地址部分: [文字](地址)
+_RE_LINK_DEST = re.compile(r"(?<=\])\([^()\s]*\)")
+
+# 裸 URL. 遇到中文标点就认为 URL 结束了, 例如 "见 https://x.com，然后".
+_RE_BARE_URL = re.compile(r"https?://[^\s" + "".join(CODE_PUNCTUATION_MAP) + r"]+")
+
+# 占位符由 ASCII 字母和数字组成, 在后续规则眼里就是一个英文单词,
+# 因此会和两边的中文之间补上空格, 但不会和紧挨着的 ASCII 标点之间补空格
+# (例如 reST 的 :func:`foo` 和 `link`_ 不会被拆开).
+_PLACEHOLDER = "QZXCTEP{}QZX"
+_RE_PLACEHOLDER = re.compile(r"QZXCTEP(\d+)QZX")
+
+
+def mask_inline_spans(line: str) -> tuple[str, list[str]]:
+    """
+    把一行中的 inline code, 链接地址和裸 URL 替换成占位符.
+
+    inline code 里的内容是代码, 按 :func:`handle_code_line` 的保守模式转换;
+    链接地址和 URL 原样保留. 这样后续规则既不会在代码里乱补空格, 也不会把代码里的
+    ``**`` 和代码外的 ``**`` 配成一对.
+
+    :return: (替换后的行, 被替换下来的原文列表)
+    """
+    if _RE_PLACEHOLDER.search(line):  # pragma: no cover - 极不可能出现
+        return line, []
+    spans = []
+
+    def repl_code(m: re.Match) -> str:
+        spans.append(m.group(1) + handle_code_line(m.group(2)) + m.group(1))
+        return _PLACEHOLDER.format(len(spans) - 1)
+
+    def repl_link(m: re.Match) -> str:
+        spans.append(m.group(0))
+        return _PLACEHOLDER.format(len(spans) - 1)
+
+    line = _RE_INLINE_CODE.sub(repl_code, line)
+    line = _RE_LINK_DEST.sub(repl_link, line)
+    line = _RE_BARE_URL.sub(repl_link, line)
+    return line, spans
+
+
+def unmask_inline_spans(line: str, spans: list[str]) -> str:
+    """把 :func:`mask_inline_spans` 换下来的原文放回去."""
+    if not spans:
+        return line
+    return _RE_PLACEHOLDER.sub(lambda m: spans[int(m.group(1))], line)
+
+
 def handle_everything(line: str) -> str:
     """
     对单独一行文本按顺序应用所有的 handler.
@@ -519,6 +621,8 @@ def handle_everything(line: str) -> str:
     # 空行 (或纯空白行) 直接返回空字符串, 不保留无意义的尾部空白
     if not line:
         return ""
+    # inline code 和链接地址先换成占位符, 处理完再放回去
+    line, spans = mask_inline_spans(line)
     # First, handle consecutive punctuation (2-3 of the same type)
     # This must be done before individual punctuation handling
     line = handle_consecutive_punctuation(line)
@@ -536,6 +640,7 @@ def handle_everything(line: str) -> str:
     line = handle_space_between_chinese_and_english(line)
     # Post-process to remove spaces inside paired markers
     line = post_process_paired_markers(line)
+    line = unmask_inline_spans(line, spans)
     # 整行只有标点符号时, 上面的 handler 会把内容全部吃掉. 此时不能再把缩进
     # 拼回去, 否则会留下一行纯空白 —— 而纯空白行在下一次处理时又会变成空行,
     # 破坏 process() 的幂等性.
@@ -554,5 +659,13 @@ def process(text: str) -> str:
     :return: 处理后的文本. 注意行尾换行符不会被保留, 换行符统一为 ``\\n``.
     """
     lines = text.splitlines()
-    new_lines = [handle_everything(line) for line in lines]
+    kinds = classify_lines(lines)
+    new_lines = []
+    for line, kind in zip(lines, kinds):
+        if kind is LineKind.TEXT:
+            new_lines.append(handle_everything(line))
+        elif kind is LineKind.CODE:
+            new_lines.append(handle_code_line(line))
+        else:
+            new_lines.append(line)
     return "\n".join(new_lines)

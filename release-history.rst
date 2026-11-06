@@ -8,6 +8,20 @@ x.y.z (Backlog)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 **Features and Improvements**
 
+- Recognize code-like blocks and convert them in a format-preserving mode that
+  only swaps the marks and never touches whitespace: Markdown fenced code
+  (fence length aware, so a four-backtick fence can wrap a three-backtick one), Mermaid
+  diagrams, ``$$`` math, HTML blocks, YAML front matter, reStructuredText
+  code-like directives (also inside ``list-table`` cells) and ``::`` literal
+  blocks. Mermaid nodes such as ``B{配置存在？}`` and edges such as ``|是|`` no
+  longer get stray spaces inserted.
+- reStructuredText grid tables and simple tables are left exactly as they are,
+  so their column alignment survives.
+- Inline code spans (single or double backticks) are converted in the
+  same format-preserving mode and spaced like an English word, and ``**``
+  inside a code span is no longer paired with a ``**`` outside it. Markdown
+  link targets ``[text](url)`` and bare URLs are left untouched.
+
 **Minor Improvements**
 
 **Bugfixes**
