@@ -38,7 +38,7 @@ def _count_changed_lines(old_text: str, new_text: str) -> int:
     return n
 
 
-def _main_text(text: str | None = None) -> int:
+def _main_text(text: str | None = None, skip_code: bool = False) -> int:
     """Convert a chunk of text and write the result to stdout.
 
     When ``text`` is ``None`` the input is read from stdin, so the command can
@@ -48,11 +48,11 @@ def _main_text(text: str | None = None) -> int:
     """
     if text is None:
         text = sys.stdin.read()
-    print(process(text))
+    print(process(text, skip_code=skip_code))
     return 0
 
 
-def _main_file(path: Path, dry_run: bool = False) -> int:
+def _main_file(path: Path, dry_run: bool = False, skip_code: bool = False) -> int:
     """Convert a UTF-8 encoded text file in place.
 
     The file must be valid UTF-8; anything else is rejected instead of being
@@ -77,7 +77,7 @@ def _main_file(path: Path, dry_run: bool = False) -> int:
     # A byte order mark is not content, keep it out of the conversion and
     # put it back afterwards so the file's encoding form is unchanged.
     bom, body = (_BOM, old_text[1:]) if old_text.startswith(_BOM) else ("", old_text)
-    new_text = bom + _restore_trailing_newline(body, process(body))
+    new_text = bom + _restore_trailing_newline(body, process(body, skip_code=skip_code))
 
     if new_text == old_text:
         print(f"{path}: no change")
@@ -147,11 +147,23 @@ def main(argv: list[str] | None = None) -> int:
         help="report what would change without writing the file",
     )
 
+    for p in (parser_text, parser_file):
+        p.add_argument(
+            "--skip_code",
+            action="store_true",
+            help=(
+                "leave code blocks and inline code completely untouched "
+                "(by default only their punctuation is converted)"
+            ),
+        )
+
     args = parser.parse_args(argv)
     if args.command == "text":
-        return _main_text(text=args.text)
+        return _main_text(text=args.text, skip_code=args.skip_code)
     else:
-        return _main_file(path=args.path, dry_run=args.dry_run)
+        return _main_file(
+            path=args.path, dry_run=args.dry_run, skip_code=args.skip_code
+        )
 
 
 if __name__ == "__main__":

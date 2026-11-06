@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from chinese_to_english_punctuation.impl import process
+from chinese_to_english_punctuation.impl import handle_code_line, process
 
 # Test cases as list of tuples (input, expected_output)
 TEST_CASES = [
@@ -299,6 +299,200 @@ TEST_CASES = [
     # 连续标点不会被吃掉, 因为 handle_consecutive_punctuation 先把它整体换掉了
     ("。。。", "..."),
 ]
+
+
+#: 块级结构和行内代码的用例. 和 :data:`TEST_CASES` 分开放, 方便定位.
+BLOCK_TEST_CASES = [
+    # --- Mermaid: 节点语法 A[...] B{...} |...| E>...] 都不能被补空格破坏
+    (
+        "\n".join(
+            [
+                "```mermaid",
+                "flowchart TD",
+                "    A[开始，读取配置] --> B{配置存在？}",
+                "    B -->|是| C[\"加载（缓存）\"]",
+                "    B -->|否| D(创建：默认值)",
+                "    C --> E>结束。]",
+                "```",
+            ]
+        ),
+        "\n".join(
+            [
+                "```mermaid",
+                "flowchart TD",
+                "    A[开始, 读取配置] --> B{配置存在?}",
+                "    B -->|是| C[\"加载(缓存)\"]",
+                "    B -->|否| D(创建: 默认值)",
+                "    C --> E>结束.]",
+                "```",
+            ]
+        ),
+    ),
+    # --- 代码块里的对齐空格, 字符串末尾的标点都不能动
+    (
+        "```\na    = 1  # 对齐，注释\nbb   = 2\necho \"完成！\"   # 注释\n```",
+        "```\na    = 1  # 对齐, 注释\nbb   = 2\necho \"完成!\"   # 注释\n```",
+    ),
+    # --- 4 个反引号包住 3 个反引号
+    (
+        "````markdown\n```python\nx = \"嵌套，代码\"  # 注释\n```\n````\n正文（结束）",
+        "````markdown\n```python\nx = \"嵌套, 代码\"  # 注释\n```\n````\n正文 (结束)",
+    ),
+    # --- 列表里缩进的代码块
+    (
+        "- 第一项，说明\n\n  ```js\n  f（1）；\n  ```\n- 第二项：说明",
+        "- 第一项, 说明\n\n  ```js\n  f(1);\n  ```\n- 第二项: 说明",
+    ),
+    # --- Markdown HTML 块
+    (
+        "<div align=\"center\">\n  <img src=\"a.png\" alt=\"图片，说明\">\n  <p>段落：内容</p>\n</div>",
+        "<div align=\"center\">\n  <img src=\"a.png\" alt=\"图片, 说明\">\n  <p>段落: 内容</p>\n</div>",
+    ),
+    # --- $$ 数学块
+    ("$$\n\\text{速度，时间}  \\quad x\n$$", "$$\n\\text{速度, 时间}  \\quad x\n$$"),
+    # --- YAML front matter
+    ("---\ntitle: 标题，说明\n---\n正文，内容", "---\ntitle: 标题, 说明\n---\n正文, 内容"),
+    # --- reST: list-table 单元格里的 code-block
+    (
+        "\n".join(
+            [
+                ".. list-table:: 标题，说明",
+                "   :header-rows: 1",
+                "",
+                "   * - 名称",
+                "     - 说明：内容，很长。",
+                "   * - 代码",
+                "     - .. code-block:: python",
+                "",
+                "          print(\"你好，世界\")  # 注释",
+            ]
+        ),
+        "\n".join(
+            [
+                ".. list-table:: 标题, 说明",
+                "   :header-rows: 1",
+                "",
+                "   * - 名称",
+                "     - 说明: 内容, 很长.",
+                "   * - 代码",
+                "     - .. code-block:: python",
+                "",
+                "          print(\"你好, 世界\")  # 注释",
+            ]
+        ),
+    ),
+    # --- reST: 指令的 field 和正文
+    (
+        ".. note::\n   :class: 重要，提示\n\n   这是提示内容，很重要。",
+        ".. note::\n   :class: 重要, 提示\n\n   这是提示内容, 很重要.",
+    ),
+    (
+        ".. image:: a.png\n   :alt: 图片，说明",
+        ".. image:: a.png\n   :alt: 图片, 说明",
+    ),
+    # --- reST: :: 引出的 literal block
+    (
+        "示例如下::\n\n    x  =  \"中文，逗号\"\n\n正文。",
+        "示例如下::\n\n    x  =  \"中文, 逗号\"\n\n正文.",
+    ),
+    # --- reST: grid table / simple table 依赖列宽对齐, 原样保留
+    (
+        "+--------+--------+\n| 名称   | 说明   |\n+========+========+\n| a，b   | 内容。 |\n+--------+--------+",
+        "+--------+--------+\n| 名称   | 说明   |\n+========+========+\n| a，b   | 内容。 |\n+--------+--------+",
+    ),
+    (
+        "=====  =====\n名称   说明\n=====  =====\na，b   内容。\n=====  =====\n\n后面，正文",
+        "=====  =====\n名称   说明\n=====  =====\na，b   内容。\n=====  =====\n\n后面, 正文",
+    ),
+    # --- inline code: 里面只做标点替换, 当作一个英文单词和中文之间补空格
+    (
+        "使用`print（）`函数，然后`**kwargs`和 **粗体** 结束。",
+        "使用 `print()` 函数, 然后 `**kwargs` 和 **粗体** 结束.",
+    ),
+    ("运行 `pip install foo；echo 好` 命令。", "运行 `pip install foo; echo 好` 命令."),
+    # reST 的 inline literal, role, 链接: 反引号和 :role: / _ 之间不能插空格
+    (
+        "使用 ``print（）`` 和 :func:`foo，bar` 以及 `链接，文字 <http://x>`_。",
+        "使用 ``print()`` 和 :func:`foo, bar` 以及 `链接, 文字 <http://x>`_.",
+    ),
+    # --- Markdown 链接地址原样保留
+    (
+        "参见[文档，链接](http://x.com/a，b)。",
+        "参见[文档, 链接](http://x.com/a，b).",
+    ),
+    # --- 裸 URL 原样保留, 遇到中文标点视为 URL 结束
+    (
+        ".. image:: https://img.shields.io/badge/✍️_Release!--None.svg?style=social",
+        ".. image:: https://img.shields.io/badge/✍️_Release!--None.svg?style=social",
+    ),
+    ("见https://x.com/a，然后。", "见 https://x.com/a, 然后."),
+]
+
+
+def test_process_blocks():
+    """Block-level structures and inline code must keep their format."""
+    for i, (text_in, expected) in enumerate(BLOCK_TEST_CASES):
+        text_out = process(text_in)
+        assert text_out == expected, (
+            f"Block test case {i + 1} failed\n"
+            f"Input:    {text_in!r}\n"
+            f"Output:   {text_out!r}\n"
+            f"Expected: {expected!r}"
+        )
+        assert process(text_out) == text_out, f"Block test case {i + 1} is not idempotent"
+
+
+def test_process_skip_code():
+    """skip_code=True leaves code blocks and inline code untouched."""
+    text = "\n".join(
+        [
+            "说明，如下：",
+            "",
+            "```python",
+            "print(\"你好，世界\")  # 注释：说明",
+            "```",
+            "",
+            "使用`print（）`函数。",
+            "",
+            ".. code-block:: python",
+            "",
+            "    x = \"中文，逗号\"",
+            "",
+            "正文（结束）",
+        ]
+    )
+    expected = "\n".join(
+        [
+            "说明, 如下:",
+            "",
+            "```python",
+            "print(\"你好，世界\")  # 注释：说明",
+            "```",
+            "",
+            "使用 `print（）` 函数.",
+            "",
+            ".. code-block:: python",
+            "",
+            "    x = \"中文，逗号\"",
+            "",
+            "正文 (结束)",
+        ]
+    )
+    out = process(text, skip_code=True)
+    assert out == expected
+    assert process(out, skip_code=True) == out
+    # 默认行为不受影响
+    assert process(text) != out
+
+
+def test_handle_code_line():
+    # 只替换标点, 不碰空白
+    assert handle_code_line("  a  ，  b  ") == "  a  ,  b  "
+    # 后面是左括号时补空格
+    assert handle_code_line("a，（b）") == "a, (b)"
+    # 连续标点之间不补空格
+    assert handle_code_line("等等。。。好") == "等等... 好"
+    assert handle_code_line("") == ""
 
 
 def test_process():
