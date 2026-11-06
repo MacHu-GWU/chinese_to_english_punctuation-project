@@ -8,25 +8,47 @@ x.y.z (Backlog)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 **Features and Improvements**
 
-- Recognize code-like blocks and convert them in a format-preserving mode that
-  only swaps the marks and never touches whitespace: Markdown fenced code
-  (fence length aware, so a four-backtick fence can wrap a three-backtick one), Mermaid
-  diagrams, ``$$`` math, HTML blocks, YAML front matter, reStructuredText
-  code-like directives (also inside ``list-table`` cells) and ``::`` literal
-  blocks. Mermaid nodes such as ``B{配置存在？}`` and edges such as ``|是|`` no
-  longer get stray spaces inserted.
-- reStructuredText grid tables and simple tables are left exactly as they are,
-  so their column alignment survives.
-- Inline code spans (single or double backticks) are converted in the
-  same format-preserving mode and spaced like an English word, and ``**``
-  inside a code span is no longer paired with a ``**`` outside it. Markdown
-  link targets ``[text](url)`` and bare URLs are left untouched.
-
 **Minor Improvements**
 
 **Bugfixes**
 
 **Miscellaneous**
+
+
+0.1.3 (2026-11-06)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Features and Improvements**
+
+- Code-like blocks are now recognized and converted in a format-preserving
+  mode: only the marks are swapped (plus one space after a comma, period and
+  the like when it runs straight into text), and whitespace, alignment and
+  syntax are otherwise left alone. This covers Markdown fenced code (fence length aware, so a
+  four-backtick fence can wrap a three-backtick one, and fences indented inside
+  list items), Mermaid diagrams, ``$$`` math, HTML blocks, YAML front matter,
+  reStructuredText code-like directives such as ``code-block``, ``math``,
+  ``raw`` and ``mermaid`` (also when nested inside ``list-table`` cells or
+  other directives), and ``::`` literal blocks.
+- reStructuredText grid tables and simple tables are left exactly as they are,
+  so their column alignment survives.
+- Inline code spans (single or double backticks) are converted in the same
+  format-preserving mode and spaced like an English word. reStructuredText
+  roles such as ``:func:`` and link references ending in ``_`` stay attached.
+- New ``skip_code`` option, ``process(text, skip_code=True)`` and
+  ``c2ep text|file --skip_code``, leaves code blocks and inline code completely
+  untouched.
+
+**Bugfixes**
+
+- Mermaid diagrams no longer get broken by stray spaces: ``B{配置存在？}`` was
+  converted to ``B{配置存在? }``, ``|是|`` to ``| 是|`` and ``E>结束。]`` to
+  ``E> 结束. ]``.
+- Runs of spaces inside code blocks (aligned assignments and comments) are no
+  longer collapsed into one.
+- ``**`` inside an inline code span is no longer paired with a ``**`` outside
+  it, which used to delete spaces in the wrong places.
+- Markdown link targets ``[text](url)`` and bare URLs are left untouched. A URL
+  containing an emoji, such as a shields.io badge, no longer gets a space
+  inserted into it.
 
 
 0.1.2 (2026-07-29)

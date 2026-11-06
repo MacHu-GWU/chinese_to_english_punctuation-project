@@ -22,6 +22,11 @@ class TestText:
         assert main(["text", "--text", "第一行，\n第二行。"]) == 0
         assert capsys.readouterr().out == "第一行,\n第二行.\n"
 
+    def test_skip_code(self, capsys):
+        text = "说明，如下：\n```\nx = \"你好，世界\"\n```"
+        assert main(["text", "--text", text, "--skip_code"]) == 0
+        assert capsys.readouterr().out == "说明, 如下:\n```\nx = \"你好，世界\"\n```\n"
+
 
 # NOTE: every file assertion below goes through write_bytes / read_bytes on
 # purpose. Path.write_text() translates "\n" to os.linesep, so on Windows it
@@ -30,6 +35,12 @@ class TestText:
 # what is actually on disk. This tool rewrites files byte for byte, so the
 # tests have to work at the same level.
 class TestFile:
+    def test_skip_code(self, tmp_path):
+        p = tmp_path / "a.md"
+        p.write_bytes("说明，如下\n```\nx（1）\n```\n".encode("utf-8"))
+        assert main(["file", "--path", str(p), "--skip_code"]) == 0
+        assert p.read_bytes() == "说明, 如下\n```\nx（1）\n```\n".encode("utf-8")
+
     def test_rewrite_in_place(self, tmp_path, capsys):
         p = tmp_path / "a.md"
         p.write_bytes("你好，世界。\n价格是100元\n".encode("utf-8"))

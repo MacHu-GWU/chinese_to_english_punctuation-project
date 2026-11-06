@@ -573,13 +573,16 @@ _PLACEHOLDER = "QZXCTEP{}QZX"
 _RE_PLACEHOLDER = re.compile(r"QZXCTEP(\d+)QZX")
 
 
-def mask_inline_spans(line: str) -> tuple[str, list[str]]:
+def mask_inline_spans(line: str, skip_code: bool = False) -> tuple[str, list[str]]:
     """
     把一行中的 inline code, 链接地址和裸 URL 替换成占位符.
 
     inline code 里的内容是代码, 按 :func:`handle_code_line` 的保守模式转换;
     链接地址和 URL 原样保留. 这样后续规则既不会在代码里乱补空格, 也不会把代码里的
     ``**`` 和代码外的 ``**`` 配成一对.
+
+    :param line: 要处理的一行
+    :param skip_code: 为 True 时 inline code 也原样保留, 不做任何转换
 
     :return: (替换后的行, 被替换下来的原文列表)
     """
@@ -588,7 +591,8 @@ def mask_inline_spans(line: str) -> tuple[str, list[str]]:
     spans = []
 
     def repl_code(m: re.Match) -> str:
-        spans.append(m.group(1) + handle_code_line(m.group(2)) + m.group(1))
+        code = m.group(2) if skip_code else handle_code_line(m.group(2))
+        spans.append(m.group(1) + code + m.group(1))
         return _PLACEHOLDER.format(len(spans) - 1)
 
     def repl_link(m: re.Match) -> str:
@@ -608,11 +612,12 @@ def unmask_inline_spans(line: str, spans: list[str]) -> str:
     return _RE_PLACEHOLDER.sub(lambda m: spans[int(m.group(1))], line)
 
 
-def handle_everything(line: str) -> str:
+def handle_everything(line: str, skip_code: bool = False) -> str:
     """
     对单独一行文本按顺序应用所有的 handler.
 
     :param line: 要处理的一行文本 (不含换行符)
+    :param skip_code: 为 True 时行内的 inline code 原样保留
 
     :return: 处理后的一行文本
     """
@@ -622,7 +627,7 @@ def handle_everything(line: str) -> str:
     if not line:
         return ""
     # inline code 和链接地址先换成占位符, 处理完再放回去
-    line, spans = mask_inline_spans(line)
+    line, spans = mask_inline_spans(line, skip_code=skip_code)
     # First, handle consecutive punctuation (2-3 of the same type)
     # This must be done before individual punctuation handling
     line = handle_consecutive_punctuation(line)
@@ -650,11 +655,16 @@ def handle_everything(line: str) -> str:
     return indent + line
 
 
-def process(text: str) -> str:
+def process(text: str, skip_code: bool = False) -> str:
     """
     把一段文本中的中文全角标点转换为英文半角标点, 并补齐中英文之间的空格.
 
+    代码类块 (见 :func:`~chinese_to_english_punctuation.blocks.classify_lines`)
+    和 inline code 默认用 :func:`handle_code_line` 的保守模式转换: 只替换标点,
+    不动空白. reStructuredText 的表格始终原样保留.
+
     :param text: 要处理的文本, 可以是多行
+    :param skip_code: 为 True 时代码类块和 inline code 完全原样保留, 一个字符都不改
 
     :return: 处理后的文本. 注意行尾换行符不会被保留, 换行符统一为 ``\\n``.
     """
@@ -663,8 +673,8 @@ def process(text: str) -> str:
     new_lines = []
     for line, kind in zip(lines, kinds):
         if kind is LineKind.TEXT:
-            new_lines.append(handle_everything(line))
-        elif kind is LineKind.CODE:
+            new_lines.append(handle_everything(line, skip_code=skip_code))
+        elif kind is LineKind.CODE and not skip_code:
             new_lines.append(handle_code_line(line))
         else:
             new_lines.append(line)

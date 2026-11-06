@@ -442,6 +442,49 @@ def test_process_blocks():
         assert process(text_out) == text_out, f"Block test case {i + 1} is not idempotent"
 
 
+def test_process_skip_code():
+    """skip_code=True leaves code blocks and inline code untouched."""
+    text = "\n".join(
+        [
+            "说明，如下：",
+            "",
+            "```python",
+            "print(\"你好，世界\")  # 注释：说明",
+            "```",
+            "",
+            "使用`print（）`函数。",
+            "",
+            ".. code-block:: python",
+            "",
+            "    x = \"中文，逗号\"",
+            "",
+            "正文（结束）",
+        ]
+    )
+    expected = "\n".join(
+        [
+            "说明, 如下:",
+            "",
+            "```python",
+            "print(\"你好，世界\")  # 注释：说明",
+            "```",
+            "",
+            "使用 `print（）` 函数.",
+            "",
+            ".. code-block:: python",
+            "",
+            "    x = \"中文，逗号\"",
+            "",
+            "正文 (结束)",
+        ]
+    )
+    out = process(text, skip_code=True)
+    assert out == expected
+    assert process(out, skip_code=True) == out
+    # 默认行为不受影响
+    assert process(text) != out
+
+
 def test_handle_code_line():
     # 只替换标点, 不碰空白
     assert handle_code_line("  a  ，  b  ") == "  a  ,  b  "
